@@ -73,9 +73,9 @@
 				]
 			},
 			{
-				if: `{trigger.data.reference AND trigger.data.action AND trigger.data.action == 'cancel'}`,
+				if: `{ trigger.data.action AND trigger.data.action == 'cancel' }`,
 				init: `{
-					$reference = trigger.data.reference;
+					$reference = trigger.data.reference otherwise bounce("reference field is missing");
 					$payee = var[$reference || '.payee'];
 					$payer = var[$reference || '.payer'];
 
@@ -193,14 +193,28 @@
 				]
 			},
 			{
+				if: `{ trigger.data.action }`,
 				init: `{
-					bounce("Enter data fields: payer, payee, reference or withdraw");
+					bounce("Possible values for action: cancel");
 				}`,
 				messages: [
 					{
 						app: 'state',
 						state: `{
-							response['usage'] = 'Enter data fields: payer, payee, reference or withdraw';
+							response['usage'] = 'Possible values for action: cancel';
+						}`
+					}
+				]
+			},
+			{
+				init: `{
+					bounce("Enter data fields: payer, payee, withdraw, reference or action");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							response['usage'] = 'Enter data fields: payer, payee, withdraw, reference or action';
 						}`
 					}
 				]
