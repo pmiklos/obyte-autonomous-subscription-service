@@ -1,0 +1,210 @@
+{
+	bounce_fees: { base: 10000 },
+	init: `{
+		$BOUNCE_FEE = 10000;
+		$TYPICAL_FEE = 1000;
+		$REIMBURSEMENT = $BOUNCE_FEE - $TYPICAL_FEE;
+	}`,
+	messages: {
+		cases: [
+			{
+				// triggered by the service provider to set up the recurring contract
+				if: `{ trigger.data.payer }`,
+				init: `{
+					$payer = trigger.data.payer otherwise bounce("payer field is missing");
+					$payee = trigger.data.payee otherwise trigger.address;
+					$period = trigger.data.period otherwise bounce("period field is missing");
+					$amount = trigger.data.amount otherwise bounce("amount field is missing");
+					$reference = sha256($payer || $payee || $period || $amount );
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: 'base',
+							outputs: [{address: "{trigger.address}", amount: "{$REIMBURSEMENT}"}]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$reference] = 'requested';
+							var[$reference||'.payee'] = $payee;
+							var[$reference||'.payer'] = $payer;
+							var[$reference||'.period'] = $period;
+							var[$reference||'.amount'] = $amount;
+							response['reference'] = $reference;
+							response['status'] = var[$reference];
+							response['message'] = 'Recurring contract requested';
+						}`
+					}
+				]
+			},
+			{
+				// triggered by customer to accept recurring contract terms
+				if: `{ trigger.data.payee}`,
+				init: `{
+					$payer = trigger.address;
+					$payee = trigger.data.payee otherwise bounce("payee field is missing");
+					$period = trigger.data.period otherwise bounce("period field is missing");
+					$amount = trigger.data.amount otherwise bounce("amount field is missing");
+					$reference = sha256($payer || $payee || $period || $amount );
+
+					if (!var[$reference]) bounce("no such contract, verify contract conditions");
+					if (var[$reference] == 'authorized') bounce('contract has already been authorized');
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: 'base',
+							outputs: [{address: "{trigger.address}", amount: "{$REIMBURSEMENT}"}]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$reference] = 'authorized';
+							response['reference'] = $reference;
+							response['status'] = var[$reference];
+							response['message'] = 'Recurring contract authorized';
+						}`
+					}
+				]
+			},
+			{
+				if: `{trigger.data.reference AND trigger.data.action AND trigger.data.action == 'cancel'}`,
+				init: `{
+					$reference = trigger.data.reference;
+					$payee = var[$reference || '.payee'];
+					$payer = var[$reference || '.payer'];
+
+					if (!var[$reference]) bounce("No such contract");
+					if (trigger.address != $payer OR trigger.address != $payee) bounce("Unauthorized");
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							asset: 'base',
+							outputs: [{ address: "{trigger.address}", amount: "{$REIMBURSEMENT}"}]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$reference] = 'cancelled';
+							response['reference'] = $reference;
+							response['status'] = var[$reference];
+							response['message'] = 'Recurring contract cancelled';
+						}`
+					}
+				]
+			},
+			{
+				if: `{ trigger.data.reference }`,
+				init: `{						
+					$reference = trigger.data.reference;
+					$status = var[$reference];
+					$payee = var[$reference || '.payee'];
+					$payer = var[$reference || '.payer'];
+					$period = var[$reference || '.period'];
+					$amount = var[$reference || '.amount'];
+					$last_payment = var[$reference || '.last_payment'] otherwise 0;
+
+					$balance = var[$payer];
+					
+					if (trigger.address != $payee) bounce("Unauthorized");
+					if (!$balance) bounce("Insufficient funds");
+					if ($balance < $amount) bounce("Insufficient funds");
+					if (!$status) bounce("No such contract");
+					if ($status != 'authorized') bounce("Contract not authorized yet");
+					if ($last_payment + $period > timestamp) bounce("Current period has already been paid");
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							outputs: [
+								{address: "{$payee}", amount: "{$amount}"},
+								{address: "{$payee}", amount: "{$REIMBURSEMENT}"}
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$payer] -= $amount;
+							var[$reference || '.last_payment'] = timestamp;
+						}`
+					}
+				]
+			},
+			{
+				// Withdraw the specified amount of money or the whole balance from the account
+				if: `{ trigger.data.withdraw }`,
+				init: `{
+					$account = trigger.address;
+					$balance = var[$account] otherwise bounce("No such account");
+
+					if (trigger.data.withdraw == 'all') {
+						$amount = $balance;
+					} else {
+						$amount = trigger.data.withdraw;
+					}
+
+					if ($amount > $balance) bounce("Invalid withdrawal amount. Maximum balance is " || $balance);
+					if ($amount <= 0) bounce("Invalid withdrawal amount. Enter a number greater than zero.");
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							outputs: [
+								{address: "{$account}", amount: "{$amount}"},
+								{address: "{$account}", amount: "{$REIMBURSEMENT}"}
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$account] -= $amount;
+						}`
+					}
+				]
+			},
+			{
+				// triggered by customer to deposit money
+				if: `{
+					$account = trigger.address;
+					$deposit = trigger.output[[asset = base]];
+					$deposit > $BOUNCE_FEE
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							var[$account] += $deposit;
+							response['balance'] = var[$account];
+							response['message'] = 'Added ' || $deposit || ' bytes to your balance';
+						}`
+					}
+				]
+			},
+			{
+				init: `{
+					bounce("Enter data fields: payer, payee, reference or withdraw");
+				}`,
+				messages: [
+					{
+						app: 'state',
+						state: `{
+							response['usage'] = 'Enter data fields: payer, payee, reference or withdraw';
+						}`
+					}
+				]
+			}
+		]
+	}
+}
