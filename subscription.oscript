@@ -130,7 +130,7 @@
 					$payer = var[$reference || '.payer'];
 
 					if (!var[$reference]) bounce("No such contract");
-					if (trigger.address != $payer OR trigger.address != $payee) bounce("Unauthorized");
+					if (trigger.address != $payer AND trigger.address != $payee) bounce("Unauthorized");
 				}`,
 				messages: [
 					{
@@ -196,21 +196,19 @@
 				if: `{ trigger.data.reference }`,
 				init: `{						
 					$reference = trigger.data.reference;
-					$status = var[$reference];
+					$status = var[$reference] otherwise bounce("No such contract");
 					$payee = var[$reference || '.payee'];
 					$payer = var[$reference || '.payer'];
 					$period = var[$reference || '.period'];
 					$amount = var[$reference || '.amount'];
 					$last_payment = var[$reference || '.last_payment'] otherwise 0;
 
-					$balance = var[$payer];
+					$balance = var[$payer] otherwise bounce("Insufficient funds");
 					
-					if (trigger.address != $payee) bounce("Unauthorized");
-					if (!$balance) bounce("Insufficient funds");
-					if ($balance < $amount) bounce("Insufficient funds");
-					if (!$status) bounce("No such contract");
 					if ($status != 'authorized') bounce("Contract not authorized yet");
+					if ($balance < $amount) bounce("Insufficient funds");
 					if ($last_payment + $period > timestamp) bounce("Current period has already been paid");
+					if (trigger.address != $payee) bounce("Unauthorized");
 				}`,
 				messages: [
 					{
