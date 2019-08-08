@@ -1,4 +1,22 @@
 {
+	/**
+	 * Subscription Service
+	 *
+	 * This autonomous agent allows service providers to set up recurring subscription contracts for their customers
+	 * and charge an agreed amount periodically. The customers must consent to the contract conditions before the
+	 * service provider can start collecting money. The customers can fund their account with any amount of money which
+	 * they can withdraw at any time. Customers and service providers are also allowed to cancel the recurring contract
+	 * at any time. Service providers should listen to events of this AA corresponding their customers to get notified
+	 * if a cancellation happens.
+	 *
+	 * Usage:
+	 *  - contract setup: service provider sends contract details
+	 *  - contract authorization: customer authorizes the contract set up by the service provider
+	 *  - customer account funding: the customer funds their account by sending bytes to AA
+	 *  - collect subscription fees: the service provider collects the recurring charges periodically
+	 *  - terminate contract: the service provider or the customer cancels the contract
+	 *  - withdraw funds: the customer withdraws the funds if they aren't planning to use the subscription service anymore
+	 */
 	bounce_fees: { base: 10000 },
 	init: `{
 		$BOUNCE_FEE = 10000;
@@ -8,11 +26,20 @@
 	messages: {
 		cases: [
 			{
-				// triggered by the service provider to set up the recurring contract
+				/**
+				 * Triggered by the service provider to set up the recurring contract.
+				 *
+				 * @param payer - the customer's Obyte address
+				 * @param period - the length of the recurring period in seconds, charges can be collected once in a period
+				 * @param amount - the amount in bytes to be charged periodically
+				 *
+				 * @response reference - the recurring contract reference to be used in subsequent requests to collect
+				 *           subscription fees. The service provider is supposed to save this reference.
+				 */
 				if: `{ trigger.data.payer }`,
 				init: `{
+					$payee = trigger.address;
 					$payer = trigger.data.payer otherwise bounce("payer field is missing");
-					$payee = trigger.data.payee otherwise trigger.address;
 					$period = trigger.data.period otherwise bounce("period field is missing");
 					$amount = trigger.data.amount otherwise bounce("amount field is missing");
 					$reference = sha256($payer || $payee || $period || $amount );
@@ -41,7 +68,21 @@
 				]
 			},
 			{
-				// triggered by customer to accept recurring contract terms
+				/**
+				 * Triggered by customer to accept the recurring contract conditions. This step is to ensure the customer
+				 * agrees to the same terms the service provider set up.
+				 *
+				 * The parameters required by this branch correspond to the ones the service provider set up. The service
+				 * provider could make it easier this step for the customer by sending an Obyte link with pre-filled data
+				 * elements and a payment addressed to this AA.
+				 *
+				 * @param payee - the Obyte address of the service provider that will collect the subscription fees
+				 * @param period - the length of the recurring period in seconds
+				 * @param amount - the amount in bytes to be charged periodically
+				 *
+				 * @response reference - the recurring contract reference to be used to cancel the contract. The customer
+				 *           is supposed to save this reference.
+				 */
 				if: `{ trigger.data.payee}`,
 				init: `{
 					$payer = trigger.address;
@@ -73,6 +114,15 @@
 				]
 			},
 			{
+				/**
+				 * Triggered by the customer or the service provider to cancel the contract.
+				 *
+				 * @param action - the literal 'cancel'
+				 * @param reference - the reference of the recurring contract to be cancelled
+				 *
+				 * @response reference
+				 * @response status - the new cancelled status
+				 */
 				if: `{ trigger.data.action AND trigger.data.action == 'cancel' }`,
 				init: `{
 					$reference = trigger.data.reference otherwise bounce("reference field is missing");
@@ -102,6 +152,47 @@
 				]
 			},
 			{
+				/**
+				 * Withdraw a specified amount of money or the whole balance to the 'trigger.address'.
+				 *
+				 * @param action - the literal 'withdraw'
+				 * @param amount - optional, if provided it's the amount in bytes to be withdrawn, otherwise the full 
+				 *                 balance is withdrawn. 
+				 */
+				if: `{ trigger.data.action AND trigger.data.action == 'withdraw' }`,
+				init: `{
+					$account = trigger.address;
+					$balance = var[$account] otherwise bounce("No such account");
+					$amount = trigger.data.amount otherwise $balance;
+
+					if ($amount > $balance) bounce("Invalid withdrawal amount. Maximum balance is " || $balance);
+					if ($amount <= 0) bounce("Invalid withdrawal amount. Enter a number greater than zero.");
+				}`,
+				messages: [
+					{
+						app: 'payment',
+						payload: {
+							outputs: [
+								{address: "{$account}", amount: "{$amount}"},
+								{address: "{$account}", amount: "{$REIMBURSEMENT}"}
+							]
+						}
+					},
+					{
+						app: 'state',
+						state: `{
+							var[$account] -= $amount;
+						}`
+					}
+				]
+			},
+			{
+				/**
+				 * Triggered by the service provider to collect subscription fees. Since the contract details are already
+				 * stored in the state variables of the AA, providing just the reference is sufficient.
+				 *
+				 * @param reference - the reference of the recurring contract to collect fees for
+				 */
 				if: `{ trigger.data.reference }`,
 				init: `{						
 					$reference = trigger.data.reference;
@@ -141,41 +232,11 @@
 				]
 			},
 			{
-				// Withdraw the specified amount of money or the whole balance from the account
-				if: `{ trigger.data.withdraw }`,
-				init: `{
-					$account = trigger.address;
-					$balance = var[$account] otherwise bounce("No such account");
-
-					if (trigger.data.withdraw == 'all') {
-						$amount = $balance;
-					} else {
-						$amount = trigger.data.withdraw;
-					}
-
-					if ($amount > $balance) bounce("Invalid withdrawal amount. Maximum balance is " || $balance);
-					if ($amount <= 0) bounce("Invalid withdrawal amount. Enter a number greater than zero.");
-				}`,
-				messages: [
-					{
-						app: 'payment',
-						payload: {
-							outputs: [
-								{address: "{$account}", amount: "{$amount}"},
-								{address: "{$account}", amount: "{$REIMBURSEMENT}"}
-							]
-						}
-					},
-					{
-						app: 'state',
-						state: `{
-							var[$account] -= $amount;
-						}`
-					}
-				]
-			},
-			{
-				// triggered by customer to deposit money
+				/**
+				 * Triggered by customer to deposit money.
+				 * 
+				 * This branch requires no parameters, simply some money exceeding the bounce fees.
+				 */
 				if: `{
 					$account = trigger.address;
 					$deposit = trigger.output[[asset = base]];
@@ -195,13 +256,13 @@
 			{
 				if: `{ trigger.data.action }`,
 				init: `{
-					bounce("Possible values for action: cancel");
+					bounce("Possible values for action: cancel, withdraw");
 				}`,
 				messages: [
 					{
 						app: 'state',
 						state: `{
-							response['usage'] = 'Possible values for action: cancel';
+							response['usage'] = 'Possible values for action: cancel, withdraw';
 						}`
 					}
 				]
