@@ -43,6 +43,8 @@
 					$period = trigger.data.period otherwise bounce("period field is missing");
 					$amount = trigger.data.amount otherwise bounce("amount field is missing");
 					$reference = sha256($payer || $payee || $period || $amount );
+
+					if (var[$reference]) bounce("contract already exists");
 				}`,
 				messages: [
 					{
@@ -201,20 +203,21 @@
 				if: `{ trigger.data.reference }`,
 				init: `{						
 					$reference = trigger.data.reference;
-
 					$status = var[$reference] otherwise bounce("No such contract");
+					$payee = var[$reference || '.payee'];
+
+					if (trigger.address != $payee) bounce("Unauthorized");
 					if ($status != 'authorized') bounce("Contract not authorized yet");
 
-					$payee = var[$reference || '.payee'];
 					$payer = var[$reference || '.payer'];
 					$period = var[$reference || '.period'];
 					$amount = var[$reference || '.amount'];
-					$next_payment = var[$reference || '.next_payment'];
-					$balance = var[$payer] otherwise bounce("Insufficient funds");
 
-					if ($balance < $amount) bounce("Insufficient funds");
+					$next_payment = var[$reference || '.next_payment'];
 					if ($next_payment > timestamp) bounce("Current period has already been paid");
-					if (trigger.address != $payee) bounce("Unauthorized");
+
+					$balance = var[$payer] otherwise bounce("Insufficient funds");
+					if ($balance < $amount) bounce("Insufficient funds");
 				}`,
 				messages: [
 					{
