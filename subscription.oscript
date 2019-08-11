@@ -100,21 +100,14 @@
 				}`,
 				messages: [
 					{
-						if: `{ $BOUNCE_FEE > $minimum_payment }`,
-						app: 'payment',
-						payload: {
-							asset: 'base',
-							outputs: [{address: "{trigger.address}", amount: "{$BOUNCE_FEE - $minimum_payment}"}]
-						}
-					},
-					{
 						app: 'state',
 						state: `{
-							var[$payer] = $amount;
+							var[$payer] = trigger.output[[asset=base]] - $TYPICAL_FEE;
 							var[$reference] = 'authorized';
 							var[$reference || '.next_payment'] = timestamp;
 							response['reference'] = $reference;
 							response['status'] = var[$reference];
+							response['balance'] = var[$payer];
 							response['message'] = 'Recurring contract authorized';
 						}`
 					}
@@ -276,13 +269,13 @@
 			},
 			{
 				init: `{
-					bounce("Enter data fields: payer, payee, withdraw, reference or action");
+					bounce("Enter a data field: payer, payee, reference or action");
 				}`,
 				messages: [
 					{
 						app: 'state',
 						state: `{
-							response['usage'] = 'Enter data fields: payer, payee, withdraw, reference or action';
+							response['usage'] = 'Enter a data field: payer, payee, reference or action';
 						}`
 					}
 				]
