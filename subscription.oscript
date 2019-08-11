@@ -13,9 +13,9 @@
 	 *  - contract setup: service provider sends contract details
 	 *  - contract authorization: customer authorizes the contract set up by the service provider
 	 *  - customer account funding: the customer funds their account by sending bytes to AA
-	 *  - collect subscription fees: the service provider collects the recurring charges periodically
-	 *  - terminate contract: the service provider or the customer cancels the contract
-	 *  - withdraw funds: the customer withdraws the funds if they aren't planning to use the subscription service anymore
+	 *  - subscription fee collection: the service provider collects the recurring charges periodically
+	 *  - contract termination: the service provider or the customer cancels the contract
+	 *  - funds withdrawal: the customer withdraws the funds if they aren't planning to use the provided service anymore
 	 */
 	bounce_fees: { base: 10000 },
 	init: `{
@@ -90,22 +90,27 @@
 					$period = trigger.data.period otherwise bounce("period field is missing");
 					$amount = trigger.data.amount otherwise bounce("amount field is missing");
 					$reference = sha256($payer || $payee || $period || $amount );
+					$minimum_payment = $TYPICAL_FEE + $amount;
 
 					if (!var[$reference]) bounce("no such contract, verify contract conditions");
 					if (var[$reference] == 'authorized') bounce('contract has already been authorized');
+					if (trigger.output[[asset=base]] < $minimum_payment) bounce("minium payment is " || $minimum_payment);
 				}`,
 				messages: [
 					{
+						if: `{ $BOUNCE_FEE > $minimum_payment }`,
 						app: 'payment',
 						payload: {
 							asset: 'base',
-							outputs: [{address: "{trigger.address}", amount: "{$REIMBURSEMENT}"}]
+							outputs: [{address: "{trigger.address}", amount: "{$BOUNCE_FEE - $minimum_payment}"}]
 						}
 					},
 					{
 						app: 'state',
 						state: `{
+							var[$payer] = $amount;
 							var[$reference] = 'authorized';
+							var[$reference || '.next_payment'] = timestamp;
 							response['reference'] = $reference;
 							response['status'] = var[$reference];
 							response['message'] = 'Recurring contract authorized';
@@ -196,18 +201,19 @@
 				if: `{ trigger.data.reference }`,
 				init: `{						
 					$reference = trigger.data.reference;
+
 					$status = var[$reference] otherwise bounce("No such contract");
+					if ($status != 'authorized') bounce("Contract not authorized yet");
+
 					$payee = var[$reference || '.payee'];
 					$payer = var[$reference || '.payer'];
 					$period = var[$reference || '.period'];
 					$amount = var[$reference || '.amount'];
-					$last_payment = var[$reference || '.last_payment'] otherwise 0;
-
+					$next_payment = var[$reference || '.next_payment'];
 					$balance = var[$payer] otherwise bounce("Insufficient funds");
-					
-					if ($status != 'authorized') bounce("Contract not authorized yet");
+
 					if ($balance < $amount) bounce("Insufficient funds");
-					if ($last_payment + $period > timestamp) bounce("Current period has already been paid");
+					if ($next_payment > timestamp) bounce("Current period has already been paid");
 					if (trigger.address != $payee) bounce("Unauthorized");
 				}`,
 				messages: [
@@ -224,7 +230,7 @@
 						app: 'state',
 						state: `{
 							var[$payer] -= $amount;
-							var[$reference || '.last_payment'] = timestamp;
+							var[$reference || '.next_payment'] = $next_payment + $period;
 						}`
 					}
 				]
