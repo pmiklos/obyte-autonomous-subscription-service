@@ -1,6 +1,7 @@
 # Autonomous Subscription Service
 
 *Address:* [HREB3DFY7DCOEYTV2UGYVWLKOZZHDNHG](https://testnetexplorer.obyte.org/#HREB3DFY7DCOEYTV2UGYVWLKOZZHDNHG)
+
 *Definer unit (testnet):* [tz7wCxXg3Jw5kleFeBhrsFgQXuWjEttRFDcmi+6hgog=](https://testnetexplorer.obyte.org/#tz7wCxXg3Jw5kleFeBhrsFgQXuWjEttRFDcmi+6hgog=)
 
 This autonomous agent allows service providers to set up recurring subscription contracts for their customers
@@ -83,6 +84,6 @@ Triggered by the customer or the service provider to cancel the contract.
 
 *Response*
 
- * `reference
+ * `reference`
  * `status` - the new cancelled status
 
