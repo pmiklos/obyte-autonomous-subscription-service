@@ -38,7 +38,7 @@ Triggered by the service provider to set up the recurring contract.
 
 Triggered by customer to accept the recurring contract conditions. This step is to ensure the customer agrees to the same terms the service provider set up. If the customer sends more than the minimally required amount of money (typical fee + amount for the first recurring charge), then that will be added to their account balance.
 
-The parameters required by this branch correspond to the ones the service provider set up. The service provider could make it easier this step for the customer by sending an Obyte link with pre-filled data elements and a payment addressed to this AA.
+The parameters required by this branch correspond to the ones the service provider set up. The service provider could make this step easier for the customer by sending an Obyte link with pre-filled data elements and a payment addressed to this AA.
 
 *Parameters*
 
