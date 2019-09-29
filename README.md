@@ -1,8 +1,8 @@
 # Autonomous Subscription Service
 
-*Address:* [HREB3DFY7DCOEYTV2UGYVWLKOZZHDNHG](https://testnetexplorer.obyte.org/#HREB3DFY7DCOEYTV2UGYVWLKOZZHDNHG)
+*Address:* [6P7OJ2WGBGBJXKUAHS5VGRHL2S5YX3P5](https://testnetexplorer.obyte.org/#6P7OJ2WGBGBJXKUAHS5VGRHL2S5YX3P5)
 
-*Definer unit (testnet):* [tz7wCxXg3Jw5kleFeBhrsFgQXuWjEttRFDcmi+6hgog=](https://testnetexplorer.obyte.org/#tz7wCxXg3Jw5kleFeBhrsFgQXuWjEttRFDcmi+6hgog=)
+*Definer unit (testnet):* [rs9ZWmemDQjk78p8pfJObCUg2R+YQg+TzRiB2fqTeoQ=](https://testnetexplorer.obyte.org/#rs9ZWmemDQjk78p8pfJObCUg2R+YQg+TzRiB2fqTeoQ=)
 
 This autonomous agent allows service providers to set up recurring subscription contracts for their customers
 and charge an agreed amount periodically. The customers must consent to the contract conditions before the
