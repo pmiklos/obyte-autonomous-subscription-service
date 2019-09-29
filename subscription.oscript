@@ -22,6 +22,8 @@
 		$BOUNCE_FEE = 10000;
 		$TYPICAL_FEE = 1000;
 		$REIMBURSEMENT = $BOUNCE_FEE - $TYPICAL_FEE;
+		$GBYTE = 1000000000;
+		$EXCHANGE_RATE_ORACLE = 'F4KHJUCLJKY4JV7M5F754LAJX4EB7M4N';
 	}`,
 	messages: {
 		cases: [
@@ -42,7 +44,12 @@
 					$payer = trigger.data.payer otherwise bounce("payer field is missing");
 					$period = trigger.data.period otherwise bounce("period field is missing");
 					$amount = trigger.data.amount otherwise bounce("amount field is missing");
-					$reference = sha256($payer || $payee || $period || $amount );
+					$currency = trigger.data.currency otherwise 'base';
+					$reference = sha256($payer || $payee || $period || $amount || $currency );
+
+					if ($currency != 'base') {
+						if (! data_feed[[oracles=$EXCHANGE_RATE_ORACLE,feed_name='GBYTE_' || $currency,ifnone=false]]) bounce("unsupported currency: " || $currency);
+					}
 
 					if (var[$reference]) bounce("contract already exists");
 				}`,
@@ -62,6 +69,7 @@
 							var[$reference||'.payer'] = $payer;
 							var[$reference||'.period'] = $period;
 							var[$reference||'.amount'] = $amount;
+							var[$reference||'.currency'] = $currency;
 							response['reference'] = $reference;
 							response['status'] = var[$reference];
 							response['message'] = 'Recurring contract requested';
@@ -91,8 +99,18 @@
 					$payee = trigger.data.payee otherwise bounce("payee field is missing");
 					$period = trigger.data.period otherwise bounce("period field is missing");
 					$amount = trigger.data.amount otherwise bounce("amount field is missing");
-					$reference = sha256($payer || $payee || $period || $amount );
-					$minimum_payment = $TYPICAL_FEE + $amount;
+					$currency = trigger.data.currency otherwise 'base';
+
+					$reference = sha256($payer || $payee || $period || $amount || $currency);
+
+					if ($currency == 'base') {
+						$exchange_rate = 1;
+					} else {
+						$exchange_rate_gbyte = data_feed[[oracles=$EXCHANGE_RATE_ORACLE,feed_name='GBYTE_' || $currency,ifnone=false]] otherwise bounce("unsupported currency: " || $currency);
+						$exchange_rate = $GBYTE / $exchange_rate_gbyte; // exchange rate in bytes
+					}
+
+					$minimum_payment = $TYPICAL_FEE + round($amount * $exchange_rate);
 
 					if (!var[$reference]) bounce("no such contract, verify contract conditions");
 					if (var[$reference] == 'authorized') bounce('contract has already been authorized');
@@ -205,19 +223,29 @@
 					$payer = var[$reference || '.payer'];
 					$period = var[$reference || '.period'];
 					$amount = var[$reference || '.amount'];
+					$currency = var[$reference || '.currency'];
 
 					$next_payment = var[$reference || '.next_payment'];
 					if ($next_payment > timestamp) bounce("Current period has already been paid");
 
 					$balance = var[$payer] otherwise bounce("Insufficient funds");
-					if ($balance < $amount) bounce("Insufficient funds");
+
+					if ($currency == 'base') {
+						$exchange_rate = 1;
+					} else {
+						$exchange_rate_gbyte = data_feed[[oracles=$EXCHANGE_RATE_ORACLE,feed_name='GBYTE_' || $currency,ifnone=false]] otherwise bounce("unsupported currency: " || $currency);
+						$exchange_rate = $GBYTE / $exchange_rate_gbyte; // exchange rate in bytes
+					}
+
+					$payment_amount = round($amount * $exchange_rate);
+					if ($balance < $payment_amount) bounce("Insufficient funds");
 				}`,
 				messages: [
 					{
 						app: 'payment',
 						payload: {
 							outputs: [
-								{address: "{$payee}", amount: "{$amount}"},
+								{address: "{$payee}", amount: "{$payment_amount}"},
 								{address: "{$payee}", amount: "{$REIMBURSEMENT}"}
 							]
 						}
@@ -225,8 +253,11 @@
 					{
 						app: 'state',
 						state: `{
-							var[$payer] -= $amount;
+							var[$payer] -= $payment_amount;
 							var[$reference || '.next_payment'] = $next_payment + $period;
+							response['next_payment'] =  $next_payment + $period;
+							response['exchange_rate'] = $exchange_rate;
+							response['payment_amount'] = $payment_amount;
 						}`
 					}
 				]
